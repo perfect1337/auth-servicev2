@@ -6,17 +6,24 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+
 	"log"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 	"github.com/perfect1337/auth-servicev2/internal/entity"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
 var DB *sql.DB
+
+type Repository struct {
+	DB *sql.DB
+}
 
 const (
 	accessTokenDuration  = 15 * time.Minute
@@ -93,31 +100,32 @@ func RegisterUser(username, email, password string) (*entity.User, error) {
 		ID:       id,
 		Username: username,
 		Email:    email,
-		Role:     "user",
+
+		Role: "user",
 	}, nil
 }
 
-func LoginUser(login, password string) (*entity.AuthResponse, error) {
+func (r *Repository) LoginUser(login, password string) (*entity.AuthResponse, error) {
+	log.Printf("Attempting login for: %s", login)
+
 	var user entity.User
-	err := DB.QueryRow(
+	err := r.DB.QueryRow(
 		`SELECT id, username, email, password_hash, role 
-         FROM users WHERE username = $1 OR email = $1`,
+		 FROM users WHERE username = \$1 OR email = \$1`,
 		login,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role)
 
 	if err != nil {
+		log.Printf("Login error for %s: %v", login, err)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("database error: %w", err)
 	}
-
-	// Добавьте проверку хеша пароля
 	if !checkPasswordHash(password, user.PasswordHash) {
 		return nil, ErrInvalidPassword
 	}
 
-	// Генерация токенов
 	accessToken, err := generateAccessToken(&user)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -128,12 +136,12 @@ func LoginUser(login, password string) (*entity.AuthResponse, error) {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Сохранение refresh token
-	_, err = DB.Exec(
+	_, err = r.DB.Exec(
 		`INSERT INTO refresh_tokens (user_id, token, expires_at) 
-         VALUES ($1, $2, $3)`,
+         VALUES (\$1, \$2, \$3)`,
 		user.ID, refreshToken, expiresAt,
 	)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to save refresh token: %w", err)
 	}
@@ -144,19 +152,25 @@ func LoginUser(login, password string) (*entity.AuthResponse, error) {
 		User:         user,
 	}, nil
 }
-func RefreshTokens(refreshToken string) (*entity.AuthResponse, error) {
+func (r *Repository) RefreshTokens(oldRefreshToken string) (*entity.AuthResponse, error) {
+	// Start transaction
+	tx, err := r.DB.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check token exists and get user info
 	var token entity.RefreshToken
 	var user entity.User
-
-	err := DB.QueryRow(
-		`SELECT rt.id, rt.user_id, rt.token, rt.expires_at, rt.created_at,
-                u.id, u.username, u.email, u.role
-         FROM refresh_tokens rt
-         JOIN users u ON rt.user_id = u.id
-         WHERE rt.token = $1`,
-		refreshToken,
-	).Scan(
-		&token.ID, &token.UserID, &token.Token, &token.ExpiresAt, &token.CreatedAt,
+	err = tx.QueryRow(`
+        SELECT rt.id, rt.user_id, rt.token, rt.expires_at, 
+               u.id, u.username, u.email, u.role
+        FROM refresh_tokens rt
+        JOIN users u ON rt.user_id = u.id
+        WHERE rt.token = $1 AND rt.expires_at > NOW()
+        FOR UPDATE`, oldRefreshToken).Scan(
+		&token.ID, &token.UserID, &token.Token, &token.ExpiresAt,
 		&user.ID, &user.Username, &user.Email, &user.Role,
 	)
 
@@ -164,35 +178,37 @@ func RefreshTokens(refreshToken string) (*entity.AuthResponse, error) {
 		if err == sql.ErrNoRows {
 			return nil, ErrInvalidToken
 		}
-		return nil, err
+		return nil, fmt.Errorf("database error: %w", err)
 	}
 
-	if time.Now().After(token.ExpiresAt) {
-		return nil, ErrTokenExpired
-	}
-
-	accessToken, err := generateAccessToken(&user)
+	// Generate new tokens
+	newAccessToken, err := generateAccessToken(&user)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	newRefreshToken, expiresAt, err := generateRefreshToken(user.ID)
+	newRefreshToken, newExpiresAt, err := generateRefreshToken(user.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	_, err = DB.Exec(
-		`UPDATE refresh_tokens 
-         SET token = $1, expires_at = $2 
-         WHERE id = $3`,
-		newRefreshToken, expiresAt, token.ID,
+	// Update refresh token
+	_, err = tx.Exec(`
+        UPDATE refresh_tokens 
+        SET token = $1, expires_at = $2 
+        WHERE id = $3`,
+		newRefreshToken, newExpiresAt, token.ID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update refresh token: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &entity.AuthResponse{
-		AccessToken:  accessToken,
+		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken,
 		User:         user,
 	}, nil
@@ -207,20 +223,20 @@ func ValidateToken(tokenString string) (*jwt.Token, error) {
 	})
 }
 
-func InitDB(connectionString string) error {
+func InitDB(connectionString string) (*Repository, error) {
 	var err error
 	DB, err = sql.Open("postgres", connectionString)
 	if err != nil {
-		return fmt.Errorf("failed to open database connection: %v", err)
+		return nil, fmt.Errorf("failed to open database connection: %v", err)
 	}
 
-	// Проверка соединения
+	// Check the connection
 	if err = DB.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database: %v", err)
+		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
 
 	log.Println("Database connection established")
-	return nil
+	return &Repository{DB: DB}, nil
 }
 
 // RunMigrations применяет миграции к базе данных
