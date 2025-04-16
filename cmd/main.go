@@ -1,10 +1,11 @@
 package main
 
 import (
-	"auth-service/internal/handlers" // Consistent naming
-	"auth-service/internal/repository"
 	"log"
 	"time"
+
+	"github.com/perfect1337/auth-servicev2/internal/handler"
+	"github.com/perfect1337/auth-servicev2/internal/repository"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

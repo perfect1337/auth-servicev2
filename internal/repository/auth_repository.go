@@ -10,6 +10,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/perfect1337/auth-servicev2/internal/entity"
+
 	"github.com/dgrijalva/jwt-go"
 
 	_ "github.com/golang-migrate/migrate/v4/source/file"
