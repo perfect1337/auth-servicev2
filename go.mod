@@ -1,4 +1,4 @@
-module github.com/perfect1337/auth-service
+module github.com/perfect1337/auth-servicev2
 
 go 1.24.1
 
