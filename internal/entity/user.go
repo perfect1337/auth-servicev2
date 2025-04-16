@@ -1,3 +1,4 @@
+user.go
 package entity
 
 import "time"

@@ -1,6 +1,6 @@
-module github.com/perfect1337/auth-servicev2
+module awesomeProject/auth-service
 
-go 1.24.1
+go 1.24
 
 require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
@@ -8,12 +8,18 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.18.2
 	github.com/lib/pq v1.10.9
 	golang.org/x/crypto v0.37.0
+	google.golang.org/grpc v1.71.1
 )
 
 require (
-	github.com/gin-contrib/cors v1.7.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
+	go.opentelemetry.io/otel v1.34.0 // indirect
+	go.opentelemetry.io/otel/metric v1.34.0 // indirect
+	go.opentelemetry.io/otel/trace v1.34.0 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
@@ -24,6 +30,7 @@ require (
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	//github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
+	github.com/gin-contrib/cors v1.7.5
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -42,5 +49,6 @@ require (
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250414145226-207652e42e2e // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

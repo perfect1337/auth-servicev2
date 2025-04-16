@@ -14,7 +14,6 @@ import (
 
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
-	"github.com/perfect1337/auth-servicev2/internal/entity"
 
 	"golang.org/x/crypto/bcrypt"
 )
